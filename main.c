@@ -384,13 +384,7 @@ int runprogram(int argc, char* argv[]) {
         close(slavept);
         close(masterpt);
 
-        char** new_argv = malloc(sizeof(char*) * (argc + 1));
-        for (int i = 0; i < argc; ++i) {
-            new_argv[i] = argv[i];
-        }
-        new_argv[argc] = NULL;
-
-        execvp(new_argv[0], new_argv);
+        execvp(argv[0], argv);
         perror("system BUG: sshpass: Failed to run command");
         exit(RETURN_RUNTIME_ERROR);
     } else if (childpid < 0) {
@@ -469,10 +463,10 @@ int main(int argc, char* argv[]) {
         return -(opt_offset + 1); // -1 becomes 0, -2 becomes 1 etc.
     }
 
-    if (argc-opt_offset < 1) {
+    if (argc - opt_offset < 1) {
         show_help();
         return 0;
     }
 
-    return runprogram(argc-opt_offset, argv + opt_offset);
+    return runprogram(argc - opt_offset, argv + opt_offset);
 }
