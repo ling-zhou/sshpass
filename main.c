@@ -54,12 +54,12 @@ enum program_return_codes {
 struct {
     enum { PWT_STDIN, PWT_FILE, PWT_FD, PWT_PASS } pwtype;
     union {
-        const char *filename;
+        const char* filename;
+        const char* password;
         int fd;
-        const char *password;
     } pwsrc;
 
-    const char *pwprompt;
+    const char* pwprompt;
     int verbose;
 } args;
 
@@ -83,7 +83,7 @@ static void show_help() {
 
 // Parse the command line. Fill in the "args" global struct with the results. Return argv offset
 // on success, and a negative number on failure
-static int parse_options(int argc, char *argv[]) {
+static int parse_options(int argc, char* argv[]) {
     int error = -1;
     int opt;
 
@@ -179,20 +179,20 @@ void window_resize_handler(int signum) {
 // Do nothing handler - makes sure the select will terminate if the signal arrives, though.
 void sigchld_handler(int signum) {}
 
-int match(const char *reference, const char *buffer, ssize_t bufsize, int state) {
-    // This is a highly simplisic implementation. It's good enough for matching "Password: ", though.
-    int i;
-    for (i = 0;reference[state] != '\0' && i < bufsize; ++i) {
-        if (reference[state] == buffer[i])
-            state++;
+int match(const char* target, const char* buffer, ssize_t bufsize, int pos) {
+    // This is a highly simplified implementation.
+    // It's good enough for matching "Password: ", though.
+    for (int i = 0; target[pos] != '\0' && i < bufsize; ++i) {
+        if (target[pos] == buffer[i])
+            pos++;
         else {
-            state = 0;
-            if (reference[state] == buffer[i])
-                state++;
+            pos = 0;
+            if (target[pos] == buffer[i])
+                pos++;
         }
     }
 
-    return state;
+    return pos;
 }
 
 void write_pass_fd(int srcfd, int dstfd) {
@@ -202,8 +202,8 @@ void write_pass_fd(int srcfd, int dstfd) {
         char buffer[40];
         int i;
         int numread = read(srcfd, buffer, sizeof(buffer));
-
         done = (numread < 1);
+
         for (i = 0; i < numread && !done; ++i) {
             if (buffer[i] != '\n')
                 write(dstfd, buffer + i, 1);
@@ -241,44 +241,43 @@ void write_pass(int fd) {
 
 int handleoutput(int fd) {
     // We are looking for the string
-    static int prevmatch = 0; // If the "password" prompt is repeated, we have the wrong password.
-    static int state1, state2;
-    static int firsttime  =  1;
-    static const char *compare1 = PASSWORD_PROMPT; // Asking for a password
-    static const char compare2[] = "The authenticity of host "; // Asks to authenticate host
-    // static const char compare3[] = "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!";
-    // Warns about man in the middle attack
-    // The remote identification changed error is sent to stderr, not the tty,
-    // so we do not handle it.
+    static int password_sent = 0; // If the "password" prompt is repeated, we have the wrong password.
+    static int target1_pos = 0, target2_pos = 0;
+    static int firsttime = 1;
+    static const char* target1 = PASSWORD_PROMPT; // Asking for a password
+    static const char* target2 = "The authenticity of host "; // Asks to authenticate host
+    // static const char target3[] = "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!";
+    // Warns about man in the middle attack, The remote identification changed error is sent to
+    // stderr, not the tty, so we do not handle it.
     // This is not a problem, as ssh exists immediately in such a case
     char buffer[256];
     int ret = 0;
 
     if (args.pwprompt) {
-        compare1  =  args.pwprompt;
+        target1 = args.pwprompt;
     }
 
     if (args.verbose && firsttime) {
         firsttime = 0;
-        fprintf(stderr, "SSHPASS searching for password prompt using match \"%s\"\n", compare1);
+        fprintf(stderr, "SSHPASS searching for password prompt using match \"%s\"\n", target1);
     }
 
-    int numread = read(fd, buffer, sizeof(buffer)-1);
-    buffer[numread]  =  '\0';
+    int numread = read(fd, buffer, sizeof(buffer) - 1);
+    buffer[numread] = '\0';
     if (args.verbose) {
         fprintf(stderr, "SSHPASS read: %s\n", buffer);
     }
 
-    state1 = match(compare1, buffer, numread, state1);
+    target1_pos = match(target1, buffer, numread, target1_pos);
 
     // Are we at a password prompt?
-    if (compare1[state1] == '\0') {
-        if (!prevmatch) {
+    if (target1[target1_pos] == '\0') {
+        if (!password_sent) {
             if (args.verbose)
                 fprintf(stderr, "SSHPASS detected prompt. Sending password.\n");
             write_pass(fd);
-            state1 = 0;
-            prevmatch = 1;
+            target1_pos = 0;
+            password_sent = 1;
         } else {
             // Wrong password - terminate with proper error code
             if (args.verbose)
@@ -288,10 +287,10 @@ int handleoutput(int fd) {
     }
 
     if (ret == 0) {
-        state2 = match(compare2, buffer, numread, state2);
+        target2_pos = match(target2, buffer, numread, target2_pos);
 
         // Are we being prompted to authenticate the host?
-        if (compare2[state2] == '\0') {
+        if (target2[target2_pos] == '\0') {
             if (args.verbose)
                 fprintf(stderr, "SSHPASS detected host authentication prompt. Exiting.\n");
             ret = RETURN_HOST_KEY_UNKNOWN;
@@ -301,7 +300,7 @@ int handleoutput(int fd) {
     return ret;
 }
 
-int runprogram(int argc, char *argv[]) {
+int runprogram(int argc, char* argv[]) {
     struct winsize ttysize; // The size of our tty
 
     // We need to interrupt a select with a SIGCHLD. In order to do so, we need a SIGCHLD handler
@@ -338,7 +337,7 @@ int runprogram(int argc, char *argv[]) {
     }
 
     // The pathname of the slave device can be obtained using ptsname(3).
-    const char *name = ptsname(masterpt);
+    const char* name = ptsname(masterpt);
     int slavept;
     /*
        Comment no. 3.14159
@@ -390,7 +389,7 @@ int runprogram(int argc, char *argv[]) {
         new_argv[i] = NULL;
 
         execvp(new_argv[0], new_argv);
-        perror("sshpass: Failed to run command");
+        perror("system BUG: sshpass: Failed to run command");
         exit(RETURN_RUNTIME_ERROR);
     } else if (childpid < 0) {
         perror("sshpass: Failed to create child process");
@@ -438,7 +437,6 @@ int runprogram(int argc, char *argv[]) {
                         }
 
                         terminate = ret;
-
                         if (terminate) {
                             close(slavept);
                         }
@@ -460,7 +458,7 @@ int runprogram(int argc, char *argv[]) {
         return 255;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     int opt_offset = parse_options(argc, argv);
 
     if (opt_offset < 0) {
