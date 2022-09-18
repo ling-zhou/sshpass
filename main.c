@@ -245,7 +245,15 @@ int handleoutput(int fd) {
     static int target1_pos = 0, target2_pos = 0;
     static int firsttime = 1;
     static const char* target1 = PASSWORD_PROMPT; // Asking for a password
+
+    // The authenticity of host '[9.*.*.113]:36000 ([9.*.*.113]:36000)' can't be established.
+    // ED25519 key fingerprint is SHA256:2pdOL0e****************UcNGtQVv/JRdZA4tL8vw.
+    // This key is not known by any other names
+    // Are you sure you want to continue connecting (yes/no/[fingerprint])?
+    // solution:
+    //   ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
     static const char* target2 = "The authenticity of host "; // Asks to authenticate host
+
     // static const char target3[] = "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!";
     // Warns about man in the middle attack, The remote identification changed error is sent to
     // stderr, not the tty, so we do not handle it.
@@ -304,10 +312,10 @@ int runprogram(int argc, char* argv[]) {
     struct winsize ttysize; // The size of our tty
 
     // We need to interrupt a select with a SIGCHLD. In order to do so, we need a SIGCHLD handler
-    signal(SIGCHLD,sigchld_handler);
+    signal(SIGCHLD, sigchld_handler);
 
     // Calling posix_openpt() creates a pathname for the corresponding pseudoterminal slave device.
-    // The pathname of the slave device can be obtained using ptsname(3).
+    // The pathname of the __slave device__ can be obtained using ptsname(3).
     // The slave device pathname exists only as long as the master device is open.
     //
     // Create a pseudo terminal for our process
@@ -330,35 +338,33 @@ int runprogram(int argc, char* argv[]) {
         return RETURN_RUNTIME_ERROR;
     }
 
-    ourtty = open("/dev/tty", 0);
+    ourtty = open("/dev/tty", 0); // XXX
     if (ourtty != -1 && ioctl(ourtty, TIOCGWINSZ, &ttysize) == 0) {
         signal(SIGWINCH, window_resize_handler);
         ioctl(masterpt, TIOCSWINSZ, &ttysize);
     }
 
     // The pathname of the slave device can be obtained using ptsname(3).
-    const char* name = ptsname(masterpt);
+    const char* slave_dev_name = ptsname(masterpt);
     int slavept;
     /*
-       Comment no. 3.14159
-
        This comment documents the history of code.
 
        We need to open the slavept inside the child process, after "setsid",
-       so that it becomes the controlling TTY for the process.
-       We do not, otherwise, need the file descriptor open.  The original approach was to
+       so that it becomes the __controlling TTY__ for the process.
+       We do not, otherwise, need the file descriptor open. The original approach was to
        close the fd immediately after, as it is no longer needed.
 
-       It turns out that (at least) the Linux kernel considers a master ptty fd that has
+       It turns out that the Linux kernel considers a master ptty fd that has
        no open slave fds to be unused, and causes "select" to return with "error on fd".
        The subsequent read would fail, causing us to go into an infinite loop.
        This is a bug in the kernel, as the fact that a master ptty fd has no slaves
-       is not a permenant problem.
+       is not a permanent problem.
        As long as processes exist that have the slave end as their controlling TTYs, new
-       slave fds can be created by opening /dev/tty, which is exactly what ssh is, in fact, doing.
+       slave fds can be created by opening /dev/tty, which is exactly what ssh is doing.
 
-       Our attempt at solving this problem, then, was to have the child process not close
-       its end of the slave ptty fd. We do, essentially, leak this fd, but this was a small
+       Our attempt at solving this problem was to have the child process not close
+       its end of the slave ptty fd. We do leak this fd, but this was a small
        price to pay. This worked great up until openssh version 5.6.
 
        Openssh version 5.6 looks at all of its open file descriptors, and closes any that
@@ -375,7 +381,7 @@ int runprogram(int argc, char* argv[]) {
         setsid();
 
         // This line makes the ptty our controlling tty. We do not otherwise need it open
-        slavept = open(name, O_RDWR);
+        slavept = open(slave_dev_name, O_RDWR);
         close(slavept);
         close(masterpt);
 
@@ -397,7 +403,7 @@ int runprogram(int argc, char* argv[]) {
     }
 
     // We are the parent
-    slavept = open(name, O_RDWR|O_NOCTTY);
+    slavept = open(slave_dev_name, O_RDWR|O_NOCTTY);
 
     int status = 0;
     int terminate = 0;
