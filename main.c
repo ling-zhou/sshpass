@@ -51,15 +51,6 @@ enum program_return_codes {
     RETURN_HOST_KEY_CHANGED,
 };
 
-// Some systems don't define posix_openpt
-#ifndef HAVE_POSIX_OPENPT
-int posix_openpt(int flags) {
-    return open("/dev/ptmx", flags);
-}
-#endif
-
-int runprogram(int argc, char *argv[]);
-
 struct {
     enum { PWT_STDIN, PWT_FILE, PWT_FD, PWT_PASS } pwtype;
     union {
@@ -71,6 +62,10 @@ struct {
     const char *pwprompt;
     int verbose;
 } args;
+
+/* use global variables so that this information can be shared with the signal handler */
+static int ourtty; // Our own tty
+static int masterpt;
 
 static void show_help() {
     printf("Usage: " PACKAGE_NAME " [-f|-d|-p|-e] [-hV] command parameters\n"
@@ -174,32 +169,137 @@ static int parse_options(int argc, char *argv[]) {
         return optind;
 }
 
-int main(int argc, char *argv[]) {
-    int opt_offset = parse_options(argc, argv);
+void window_resize_handler(int signum) {
+    struct winsize ttysize; // The size of our tty
 
-    if (opt_offset < 0) {
-        // There was some error
-        show_help();
-        return -(opt_offset + 1); // -1 becomes 0, -2 becomes 1 etc.
-    }
-
-    if (argc-opt_offset < 1) {
-        show_help();
-        return 0;
-    }
-
-    return runprogram(argc-opt_offset, argv + opt_offset);
+    if (ioctl(ourtty, TIOCGWINSZ, &ttysize) == 0)
+        ioctl(masterpt, TIOCSWINSZ, &ttysize);
 }
 
-int handleoutput(int fd);
-
-/* Global variables so that this information be shared with the signal handler */
-static int ourtty; // Our own tty
-static int masterpt;
-
-void window_resize_handler(int signum);
 // Do nothing handler - makes sure the select will terminate if the signal arrives, though.
 void sigchld_handler(int signum) {}
+
+int match(const char *reference, const char *buffer, ssize_t bufsize, int state) {
+    // This is a highly simplisic implementation. It's good enough for matching "Password: ", though.
+    int i;
+    for (i = 0;reference[state] != '\0' && i < bufsize; ++i) {
+        if (reference[state] == buffer[i])
+            state++;
+        else {
+            state = 0;
+            if (reference[state] == buffer[i])
+                state++;
+        }
+    }
+
+    return state;
+}
+
+void write_pass_fd(int srcfd, int dstfd) {
+    int done = 0;
+
+    while (!done) {
+        char buffer[40];
+        int i;
+        int numread = read(srcfd, buffer, sizeof(buffer));
+
+        done = (numread < 1);
+        for (i = 0; i < numread && !done; ++i) {
+            if (buffer[i] != '\n')
+                write(dstfd, buffer + i, 1);
+            else
+                done = 1;
+        }
+    }
+
+    write(dstfd, "\n", 1);
+}
+
+void write_pass(int fd) {
+    switch(args.pwtype) {
+    case PWT_STDIN:
+        write_pass_fd(STDIN_FILENO, fd);
+        break;
+    case PWT_FD:
+        write_pass_fd(args.pwsrc.fd, fd);
+        break;
+    case PWT_FILE:
+        {
+            int srcfd = open(args.pwsrc.filename, O_RDONLY);
+            if (srcfd != -1) {
+                write_pass_fd(srcfd, fd);
+                close(srcfd);
+            }
+        }
+        break;
+    case PWT_PASS:
+        write(fd, args.pwsrc.password, strlen(args.pwsrc.password));
+        write(fd, "\n", 1);
+        break;
+    }
+}
+
+int handleoutput(int fd) {
+    // We are looking for the string
+    static int prevmatch = 0; // If the "password" prompt is repeated, we have the wrong password.
+    static int state1, state2;
+    static int firsttime  =  1;
+    static const char *compare1 = PASSWORD_PROMPT; // Asking for a password
+    static const char compare2[] = "The authenticity of host "; // Asks to authenticate host
+    // static const char compare3[] = "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!";
+    // Warns about man in the middle attack
+    // The remote identification changed error is sent to stderr, not the tty,
+    // so we do not handle it.
+    // This is not a problem, as ssh exists immediately in such a case
+    char buffer[256];
+    int ret = 0;
+
+    if (args.pwprompt) {
+        compare1  =  args.pwprompt;
+    }
+
+    if (args.verbose && firsttime) {
+        firsttime = 0;
+        fprintf(stderr, "SSHPASS searching for password prompt using match \"%s\"\n", compare1);
+    }
+
+    int numread = read(fd, buffer, sizeof(buffer)-1);
+    buffer[numread]  =  '\0';
+    if (args.verbose) {
+        fprintf(stderr, "SSHPASS read: %s\n", buffer);
+    }
+
+    state1 = match(compare1, buffer, numread, state1);
+
+    // Are we at a password prompt?
+    if (compare1[state1] == '\0') {
+        if (!prevmatch) {
+            if (args.verbose)
+                fprintf(stderr, "SSHPASS detected prompt. Sending password.\n");
+            write_pass(fd);
+            state1 = 0;
+            prevmatch = 1;
+        } else {
+            // Wrong password - terminate with proper error code
+            if (args.verbose)
+                fprintf(stderr, "SSHPASS detected prompt, again. Wrong password. Terminating.\n");
+            ret = RETURN_INCORRECT_PASSWORD;
+        }
+    }
+
+    if (ret == 0) {
+        state2 = match(compare2, buffer, numread, state2);
+
+        // Are we being prompted to authenticate the host?
+        if (compare2[state2] == '\0') {
+            if (args.verbose)
+                fprintf(stderr, "SSHPASS detected host authentication prompt. Exiting.\n");
+            ret = RETURN_HOST_KEY_UNKNOWN;
+        }
+    }
+
+    return ret;
+}
 
 int runprogram(int argc, char *argv[]) {
     struct winsize ttysize; // The size of our tty
@@ -280,7 +380,7 @@ int runprogram(int argc, char *argv[]) {
         close(slavept);
         close(masterpt);
 
-        char **new_argv = malloc(sizeof(char*) * (argc + 1));
+        char** new_argv = malloc(sizeof(char*) * (argc + 1));
 
         int i;
         for (i = 0; i < argc; ++i) {
@@ -360,136 +460,19 @@ int runprogram(int argc, char *argv[]) {
         return 255;
 }
 
-int match(const char *reference, const char *buffer, ssize_t bufsize, int state);
-void write_pass(int fd);
+int main(int argc, char *argv[]) {
+    int opt_offset = parse_options(argc, argv);
 
-int handleoutput(int fd) {
-    // We are looking for the string
-    static int prevmatch = 0; // If the "password" prompt is repeated, we have the wrong password.
-    static int state1, state2;
-    static int firsttime  =  1;
-    static const char *compare1 = PASSWORD_PROMPT; // Asking for a password
-    static const char compare2[] = "The authenticity of host "; // Asks to authenticate host
-    // static const char compare3[] = "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!";
-    // Warns about man in the middle attack
-    // The remote identification changed error is sent to stderr, not the tty,
-    // so we do not handle it.
-    // This is not a problem, as ssh exists immediately in such a case
-    char buffer[256];
-    int ret = 0;
-
-    if (args.pwprompt) {
-        compare1  =  args.pwprompt;
+    if (opt_offset < 0) {
+        // There was some error
+        show_help();
+        return -(opt_offset + 1); // -1 becomes 0, -2 becomes 1 etc.
     }
 
-    if (args.verbose && firsttime) {
-        firsttime = 0;
-        fprintf(stderr, "SSHPASS searching for password prompt using match \"%s\"\n", compare1);
+    if (argc-opt_offset < 1) {
+        show_help();
+        return 0;
     }
 
-    int numread = read(fd, buffer, sizeof(buffer)-1);
-    buffer[numread]  =  '\0';
-    if (args.verbose) {
-        fprintf(stderr, "SSHPASS read: %s\n", buffer);
-    }
-
-    state1 = match(compare1, buffer, numread, state1);
-
-    // Are we at a password prompt?
-    if (compare1[state1] == '\0') {
-        if (!prevmatch) {
-            if (args.verbose)
-                fprintf(stderr, "SSHPASS detected prompt. Sending password.\n");
-            write_pass(fd);
-            state1 = 0;
-            prevmatch = 1;
-        } else {
-            // Wrong password - terminate with proper error code
-            if (args.verbose)
-                fprintf(stderr, "SSHPASS detected prompt, again. Wrong password. Terminating.\n");
-            ret = RETURN_INCORRECT_PASSWORD;
-        }
-    }
-
-    if (ret == 0) {
-        state2 = match(compare2, buffer, numread, state2);
-
-        // Are we being prompted to authenticate the host?
-        if (compare2[state2] == '\0') {
-            if (args.verbose)
-                fprintf(stderr, "SSHPASS detected host authentication prompt. Exiting.\n");
-            ret = RETURN_HOST_KEY_UNKNOWN;
-        }
-    }
-
-    return ret;
-}
-
-int match(const char *reference, const char *buffer, ssize_t bufsize, int state) {
-    // This is a highly simplisic implementation. It's good enough for matching "Password: ", though.
-    int i;
-    for (i = 0;reference[state] != '\0' && i < bufsize; ++i) {
-        if (reference[state] == buffer[i])
-            state++;
-        else {
-            state = 0;
-            if (reference[state] == buffer[i])
-                state++;
-        }
-    }
-
-    return state;
-}
-
-void write_pass_fd(int srcfd, int dstfd);
-
-void write_pass(int fd) {
-    switch(args.pwtype) {
-    case PWT_STDIN:
-        write_pass_fd(STDIN_FILENO, fd);
-        break;
-    case PWT_FD:
-        write_pass_fd(args.pwsrc.fd, fd);
-        break;
-    case PWT_FILE:
-        {
-            int srcfd = open(args.pwsrc.filename, O_RDONLY);
-            if (srcfd != -1) {
-                write_pass_fd(srcfd, fd);
-                close(srcfd);
-            }
-        }
-        break;
-    case PWT_PASS:
-        write(fd, args.pwsrc.password, strlen(args.pwsrc.password));
-        write(fd, "\n", 1);
-        break;
-    }
-}
-
-void write_pass_fd(int srcfd, int dstfd) {
-    int done = 0;
-
-    while (!done) {
-        char buffer[40];
-        int i;
-        int numread = read(srcfd, buffer, sizeof(buffer));
-
-        done = (numread < 1);
-        for (i = 0; i < numread && !done; ++i) {
-            if (buffer[i] != '\n')
-                write(dstfd, buffer + i, 1);
-            else
-                done = 1;
-        }
-    }
-
-    write(dstfd, "\n", 1);
-}
-
-void window_resize_handler(int signum) {
-    struct winsize ttysize; // The size of our tty
-
-    if (ioctl(ourtty, TIOCGWINSZ, &ttysize) == 0)
-        ioctl(masterpt, TIOCSWINSZ, &ttysize);
+    return runprogram(argc-opt_offset, argv + opt_offset);
 }
