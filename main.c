@@ -201,8 +201,6 @@ void window_resize_handler(int signum);
 // Do nothing handler - makes sure the select will terminate if the signal arrives, though.
 void sigchld_handler(int signum) {}
 
-// man posix_openpt
-// man pts
 int runprogram(int argc, char *argv[]) {
     struct winsize ttysize; // The size of our tty
 
@@ -214,6 +212,7 @@ int runprogram(int argc, char *argv[]) {
     // The slave device pathname exists only as long as the master device is open.
     //
     // Create a pseudo terminal for our process
+    //   An unused UNIX 98 pseudoterminal master is opened by calling posix_openpt(3).
     masterpt = posix_openpt(O_RDWR);
     if (masterpt == -1) {
         perror("Failed to get a pseudo terminal");

@@ -1,0 +1,48 @@
+# vim:ft=conf
+
+# man posix_openpt
+# man pts
+# man pty
+# man tty
+
+UNIX 98 pseudoterminals
+   An unused UNIX 98 pseudoterminal master is opened by calling
+   __posix_openpt__(3).  (This function opens the __master clone device__,
+   __/dev/ptmx__; see pts(4).)  After performing any program-specific
+   initializations, changing the ownership and permissions of the
+   slave device using __grantpt__(3), and unlocking the slave using
+   __unlockpt__(3)), the corresponding slave device can be opened by
+   passing the name returned by __ptsname__(3) in a call to open(2).
+
+When a process opens /dev/ptmx, it gets a file descriptor for a pseudoterminal master (PTM),
+and a pseudoterminal slave (PTS) device is created in the /dev/pts directory.
+Each file descriptor obtained by opening /dev/ptmx is an __independent PTM__ with its own
+associated PTS, whose __path__ can be found by passing the descriptor to __ptsname__(3).
+
+Before opening the pseudoterminal slave, you must pass the master's file descriptor to
+__grantpt__(3) and __unlockpt__(3).
+
+Once both the pseudoterminal master and slave are open, the slave provides __processes__ with an
+__interface__ that is identical to that of a real terminal.
+
+Data written to the slave is presented on the master descriptor as input.
+Data written to the master is presented to the slave as input.
+
+In practice, pseudoterminals are used for implementing terminal emulators such as xterm(1),
+in which data read from the pseudoterminal master is interpreted by the application in the
+same way a real terminal would interpret the data, and for implementing remote-login programs
+such as sshd(8), in which data read from the pseudoterminal master is sent across the network
+to a __client program__ that is connected to a terminal or terminal emulator.
+
+BSD-style pseudoterminals are considered __deprecated__
+
+FILES
+       /dev/ptmx (UNIX 98 master clone device)
+       /dev/pts/* (UNIX 98 slave devices)
+       /dev/pty[p-za-e][0-9a-f] (BSD master devices)
+       /dev/tty[p-za-e][0-9a-f] (BSD slave devices)
+
+A pseudoterminal (sometimes abbreviated "pty") is a pair of
+virtual character devices that provide a bidirectional
+communication channel.  One end of the __channel__ is called the
+__master__; the other end is called the __slave__.
