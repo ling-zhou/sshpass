@@ -418,24 +418,22 @@ int runprogram(int argc, char* argv[]) {
 
             int selret = pselect(masterpt + 1, &readfd, NULL, NULL, NULL, &sigmask_select);
 
-            if (selret > 0) {
-                if (FD_ISSET(masterpt, &readfd)) {
-                    int ret;
-                    if ((ret = handleoutput(masterpt))) {
-                        // Authentication failed or any other error
+            if (selret > 0 && FD_ISSET(masterpt, &readfd)) {
+                int ret = handleoutput(masterpt);
+                if (ret != 0) { // FIXME, no < 0
+                    // Authentication failed or any other error
 
-                        // handleoutput returns positive error number in case of some error, and
-                        // a negative value
-                        // if all that happened is that the slave end of the pt is closed.
-                        if (ret > 0) {
-                            close(masterpt); // Signal ssh that it's controlling TTY is now closed
-                            close(slavept);
-                        }
+                    // handleoutput returns positive error number in case of some error, and
+                    // a negative value if all that happened is that the slave end of the pt
+                    // is closed.
+                    if (ret > 0) {
+                        close(masterpt); // Signal ssh that it's controlling TTY is now closed
+                        close(slavept);
+                    }
 
-                        terminate = ret;
-                        if (terminate) {
-                            close(slavept);
-                        }
+                    terminate = ret;
+                    if (terminate) {
+                        close(slavept);
                     }
                 }
             }
