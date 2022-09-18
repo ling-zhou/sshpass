@@ -241,7 +241,7 @@ void write_pass(int fd) {
 
 int handleoutput(int fd) {
     // We are looking for the string
-    static int password_sent = 0; // If the "password" prompt is repeated, we have the wrong password.
+    static int password_sent = 0; // If the "password" prompt repeated, we have the wrong password.
     static int target1_pos = 0, target2_pos = 0;
     static int firsttime = 1;
     static const char* target1 = PASSWORD_PROMPT; // Asking for a password
@@ -377,8 +377,7 @@ int runprogram(int argc, char* argv[]) {
 
     int childpid = fork();
     if (childpid == 0) { // Child
-        // Detach us from the current TTY
-        setsid();
+        setsid(); // Detach us from the current TTY
 
         // This line makes the ptty our controlling tty. We do not otherwise need it open
         slavept = open(slave_dev_name, O_RDWR);
@@ -386,13 +385,10 @@ int runprogram(int argc, char* argv[]) {
         close(masterpt);
 
         char** new_argv = malloc(sizeof(char*) * (argc + 1));
-
-        int i;
-        for (i = 0; i < argc; ++i) {
+        for (int i = 0; i < argc; ++i) {
             new_argv[i] = argv[i];
         }
-
-        new_argv[i] = NULL;
+        new_argv[argc] = NULL;
 
         execvp(new_argv[0], new_argv);
         perror("system BUG: sshpass: Failed to run command");
