@@ -6,6 +6,13 @@
 # man tty
 # https://en.wikipedia.org/wiki/Pseudoterminal
 # https://www.reddit.com/r/learnprogramming/comments/27v0l4/masterslave_pty/
+# https://dvdhrm.files.wordpress.com/2013/08/vt_txt.png
+# https://dvdhrm.wordpress.com/2013/08/24/session-management-on-linux/
+# http://www.linusakesson.net/programming/tty/
+# https://unix.stackexchange.com/questions/117981/what-are-the-responsibilities-of-each-pseudo-terminal-pty-component-software
+# https://stackoverflow.com/questions/34686940/pty-tty-what-cant-you-do-with-only-slave-fd
+# https://docstore.mik.ua/manuals/hp-ux/en/B2355-60130/pty.7.html
+# https://superuser.com/questions/1204150/can-master-pseudoterminal-pty-have-more-than-one-slave-ptys-associated-with-it
 
 A pty is a device that provides two __device files__ and allows programs that expect to be
 connected to a terminal to be connected to another program instead of a physical terminal.
@@ -31,7 +38,7 @@ UNIX 98 pseudoterminals
    passing the name returned by __ptsname__(3) in a call to open(2).
 
 When a process opens /dev/ptmx, it gets a file descriptor for a pseudoterminal master (PTM),
-and a pseudoterminal slave (PTS) device is created in the /dev/pts directory.
+and a __pseudoterminal slave__ (PTS) device is created in the /dev/pts directory.
 Each file descriptor obtained by opening /dev/ptmx is an __independent PTM__ with its own
 associated PTS, whose __path__ can be found by passing the descriptor to __ptsname__(3).
 
@@ -63,7 +70,39 @@ virtual character devices that provide a bidirectional
 communication channel.  One end of the __channel__ is called the
 __master__; the other end is called the __slave__.
 
-https://unix.stackexchange.com/questions/117981/what-are-the-responsibilities-of-each-pseudo-terminal-pty-component-software
+# https://unix.stackexchange.com/questions/117981/what-are-the-responsibilities-of-each-pseudo-terminal-pty-component-software
 A user accesses a pseudo-TTY device through the master device (called ptm)
 that in turn is accessed through the clone driver.
 
+# https://www.linusakesson.net/programming/tty/
+The TTY driver keeps track of the foreground process group id, but only in a passive way.
+The __session leader__ has to update this information explicitly when necessary. Similarly,
+the TTY driver keeps track of the size of the connected terminal, but this information has
+to be updated explicitly, by the terminal emulator or even by the user.
+
+As you can see in the diagram above, several processes have /dev/pts/0 attached to their standard
+input. But only the __foreground job__ (the ls | sort pipeline) will receive input from the TTY.
+Likewise, only the foreground job will be allowed to write to the TTY device
+(in the default configuration). If the cat process were to attempt to write to the TTY,
+the kernel would suspend it using a signal.
+
+# https://www.compuhoy.com/what-is-tty-and-pts-in-linux/
+What does pts mean in Linux?
+A tty is a native terminal device, the backend is either hardware or kernel emulated.
+A pts (pseudo terminal device) is a terminal device which is emulated by an other program
+(example: xterm, screen, or ssh are such programs).
+
+What does pts mean in TTY?
+PTS: Stands for the pseudo terminal slave. The difference between TTY and PTS is the type of
+connection to the computer. TTY ports are direct connections to the computer such as a
+keyboard/mouse or a serial connection to the device.
+
+What is a pseudo terminal in Linux?
+A pseudo-terminal is a special interprocess communication channel that acts like a terminal.
+One end of the channel is called the master side or master pseudo-terminal device, the other
+side is called the slave side. … Allocating a pseudo terminal.
+
+What is Dev PTMX?
+What is ptmx: The file /dev/ptmx is a character file with major number 5 and minor number 2,
+usually of mode 0666 and owner. group of root. root. It is used to create a pseudoterminal
+master and slave pair.
