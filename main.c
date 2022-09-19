@@ -120,8 +120,7 @@ static int parse_options(int argc, char* argv[]) {
 
             // Hide the original password from the command line
             {
-                int i;
-                for (i = 0; optarg[i] != '\0'; ++i)
+                for (int i = 0; optarg[i] != '\0'; ++i)
                     optarg[i] = 'z';
             }
             break;
@@ -200,11 +199,10 @@ void write_pass_fd(int srcfd, int dstfd) {
 
     while (!done) {
         char buffer[40];
-        int i;
         int numread = read(srcfd, buffer, sizeof(buffer));
         done = (numread < 1);
 
-        for (i = 0; i < numread && !done; ++i) {
+        for (int i = 0; i < numread && !done; ++i) {
             if (buffer[i] != '\n')
                 write(dstfd, buffer + i, 1);
             else
