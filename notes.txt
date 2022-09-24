@@ -4,20 +4,17 @@
 # man pts
 # man pty
 # man tty
-# https://en.wikipedia.org/wiki/Pseudoterminal
 # https://www.reddit.com/r/learnprogramming/comments/27v0l4/masterslave_pty/
 # https://dvdhrm.files.wordpress.com/2013/08/vt_txt.png
 # https://dvdhrm.wordpress.com/2013/08/24/session-management-on-linux/
 # http://www.linusakesson.net/programming/tty/
 # https://unix.stackexchange.com/questions/117981/what-are-the-responsibilities-of-each-pseudo-terminal-pty-component-software
 # https://stackoverflow.com/questions/34686940/pty-tty-what-cant-you-do-with-only-slave-fd
-# https://docstore.mik.ua/manuals/hp-ux/en/B2355-60130/pty.7.html
-# https://superuser.com/questions/1204150/can-master-pseudoterminal-pty-have-more-than-one-slave-ptys-associated-with-it
 
 A pty is a device that provides two __device files__ and allows programs that expect to be
 connected to a terminal to be connected to another program instead of a physical terminal.
 
-The slave end is a __device file__ that behaves just like a device file for a physical terminal.
+The slave end is a __device file__ that behaves just like a device file for a __physical terminal__.
 The slave end is where your pico process is connected.
 
 The master end is the end where the program that does the job of the physical terminal connects.
@@ -45,8 +42,8 @@ associated PTS, whose __path__ can be found by passing the descriptor to __ptsna
 Before opening the pseudoterminal slave, you must pass the master's file descriptor to
 __grantpt__(3) and __unlockpt__(3).
 
-Once both the pseudoterminal master and slave are open, the slave provides __processes__ with an
-__interface__ that is identical to that of a real terminal.
+Once both the pseudoterminal master and slave are open, __the slave__ provides __processes__
+with an interface that is identical to that of a __real terminal__.
 
 Data written to the slave is presented on the master descriptor as input.
 Data written to the master is presented to the slave as input.

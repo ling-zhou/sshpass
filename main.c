@@ -36,6 +36,7 @@
 #endif
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
@@ -238,6 +239,7 @@ void write_pass(int fd) {
 }
 
 int handleoutput(int fd) {
+    static uint64_t rcv_bytes = 0;
     // We are looking for the string
     static int password_sent = 0; // If the "password" prompt repeated, we have the wrong password.
     static int target1_pos = 0, target2_pos = 0;
@@ -269,15 +271,29 @@ int handleoutput(int fd) {
     }
 
     int numread = read(fd, buffer, sizeof(buffer) - 1);
+    if (numread == 0) {
+        fprintf(stderr, "got EOF, exiting ...\n");
+        exit(0);
+    } else if (numread < 0) {
+        fprintf(stderr, "got err: %s\n", strerror(errno));
+        exit(1);
+    }
+
     buffer[numread] = '\0';
+    rcv_bytes += numread;
+    printf("<<<(%d): %s>>>\n", numread, buffer);
+
     if (args.verbose) {
         fprintf(stderr, "SSHPASS read: %s\n", buffer);
     }
 
+    // FIXME, XXX
     target1_pos = match(target1, buffer, numread, target1_pos);
 
     // Are we at a password prompt?
     if (target1[target1_pos] == '\0') {
+        // 此时不存在 The authenticity of host
+        // 因为 The authenticity of host 比 password 先出现
         if (!password_sent) {
             if (args.verbose)
                 fprintf(stderr, "SSHPASS detected prompt. Sending password.\n");
@@ -293,6 +309,7 @@ int handleoutput(int fd) {
     }
 
     if (ret == 0) {
+        // XXX
         target2_pos = match(target2, buffer, numread, target2_pos);
 
         // Are we being prompted to authenticate the host?
