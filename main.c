@@ -65,7 +65,7 @@ struct {
 } args;
 
 /* use global variables so that this information can be shared with the signal handler */
-static int ourtty; // Our own tty
+static int ourtty; // Our own tty(local controlling tty under which the program is run?)
 static int masterpt;
 
 static void show_help() {
@@ -353,6 +353,15 @@ int runprogram(int argc, char* argv[]) {
         return RETURN_RUNTIME_ERROR;
     }
 
+    // If a process has a __controlling terminal__, opening the special file __/dev/tty__ obtains a
+    // file  descriptor  for  that  terminal.  This  is  useful  if  standard  input  and
+    // output  are redirected, and a program wants to ensure that it is communicating with
+    // the controlling terminal. For example, the getpass() function described in Section
+    // 8.5 opens/dev/tty for this purpose. If the process doesn’t have a controlling terminal,
+    // opening /dev/tty fails with the error ENXIO.
+
+    // As long as processes exist that have the slave end as their controlling TTYs,
+    // __new slave fds__ can be created by opening /dev/tty, which is exactly what ssh is doing.
     ourtty = open("/dev/tty", 0); // XXX, local terminal(e.g. WeTerm)?
     if (ourtty != -1 && ioctl(ourtty, TIOCGWINSZ, &ttysize) == 0) {
         signal(SIGWINCH, window_resize_handler);
@@ -394,7 +403,7 @@ int runprogram(int argc, char* argv[]) {
     int childpid = fork();
     if (childpid == 0) { // Child
         // Call setsid(), to create a new session (Section 34.3).
-        // The child is the leaderof the new session and loses its
+        // The child is the leader of the new session and loses its
         // controlling terminal (if it had one).
         setsid(); // Detach us from the current TTY
 
