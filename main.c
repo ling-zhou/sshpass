@@ -353,7 +353,7 @@ int runprogram(int argc, char* argv[]) {
         return RETURN_RUNTIME_ERROR;
     }
 
-    ourtty = open("/dev/tty", 0); // XXX
+    ourtty = open("/dev/tty", 0); // XXX, local terminal(e.g. WeTerm)?
     if (ourtty != -1 && ioctl(ourtty, TIOCGWINSZ, &ttysize) == 0) {
         signal(SIGWINCH, window_resize_handler);
         ioctl(masterpt, TIOCSWINSZ, &ttysize);
@@ -375,6 +375,7 @@ int runprogram(int argc, char* argv[]) {
        The subsequent read would fail, causing us to go into an infinite loop.
        This is a bug in the kernel, as the fact that a master ptty fd has no slaves
        is not a permanent problem.
+
        As long as processes exist that have the slave end as their controlling TTYs, new
        slave fds can be created by opening /dev/tty, which is exactly what ssh is doing.
 
@@ -392,11 +393,20 @@ int runprogram(int argc, char* argv[]) {
 
     int childpid = fork();
     if (childpid == 0) { // Child
+        // Call setsid(), to create a new session (Section 34.3).
+        // The child is the leaderof the new session and loses its
+        // controlling terminal (if it had one).
         setsid(); // Detach us from the current TTY
 
+        // Open the pseudoterminal slave. Since the child lost its controlling terminal
+        // in the previous step, this step causes the pseudoterminal slave to become
+        // the controlling terminal for the child.
         // This line makes the ptty our controlling tty. We do not otherwise need it open
         slavept = open(slave_dev_name, O_RDWR);
-        close(slavept);
+        close(slavept); // XXX?
+
+        // Close the file descriptor for the pseudoterminal master,
+        // since it is not required in the child.
         close(masterpt);
 
         execvp(argv[0], argv);

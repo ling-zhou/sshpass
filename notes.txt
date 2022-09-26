@@ -4,12 +4,6 @@
 # man pts
 # man pty
 # man tty
-# https://www.reddit.com/r/learnprogramming/comments/27v0l4/masterslave_pty/
-# https://dvdhrm.files.wordpress.com/2013/08/vt_txt.png
-# https://dvdhrm.wordpress.com/2013/08/24/session-management-on-linux/
-# http://www.linusakesson.net/programming/tty/
-# https://unix.stackexchange.com/questions/117981/what-are-the-responsibilities-of-each-pseudo-terminal-pty-component-software
-# https://stackoverflow.com/questions/34686940/pty-tty-what-cant-you-do-with-only-slave-fd
 
 A pty is a device that provides two __device files__ and allows programs that expect to be
 connected to a terminal to be connected to another program instead of a physical terminal.
@@ -35,7 +29,7 @@ UNIX 98 pseudoterminals
    passing the name returned by __ptsname__(3) in a call to open(2).
 
 When a process opens /dev/ptmx, it gets a file descriptor for a pseudoterminal master (PTM),
-and a __pseudoterminal slave__ (PTS) device is created in the /dev/pts directory.
+and a __pseudoterminal slave__ (PTS) device is created in the __/dev/pts__ directory.
 Each file descriptor obtained by opening /dev/ptmx is an __independent PTM__ with its own
 associated PTS, whose __path__ can be found by passing the descriptor to __ptsname__(3).
 
@@ -101,5 +95,12 @@ side is called the slave side. … Allocating a pseudo terminal.
 
 What is Dev PTMX?
 What is ptmx: The file /dev/ptmx is a character file with major number 5 and minor number 2,
-usually of mode 0666 and owner. group of root. root. It is used to create a pseudoterminal
+usually of mode 0666 and owner.group of root.root. It is used to create a pseudoterminal
 master and slave pair.
+
+# https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.377.9705&rep=rep1&type=pdf
+If SSH allocates a pty, it also automatically defines an environment variable in the remote shell.
+The variable is SSH_TTY (for SSH1 and OpenSSH) or SSH2_TTY (for SSH2) and contains name of the
+character device file connected to the "slave" side of the pty, the side that emulates a real tty.
+We can see this in action with a few simple commands. Try printing the value of SSH_TTY on a
+remote machine. If no tty is allocated, the result is blank.
