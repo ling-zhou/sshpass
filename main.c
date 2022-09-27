@@ -26,7 +26,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
-#include <sys/select.h>
+#include <sys/poll.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -176,7 +176,7 @@ void window_resize_handler(int signum) {
         ioctl(masterpt, TIOCSWINSZ, &ttysize);
 }
 
-// Do nothing handler - makes sure the select will terminate if the signal arrives, though.
+// Do nothing handler - makes sure the ppoll will terminate if the signal arrives, though.
 void sigchld_handler(int signum) {}
 
 int match(const char* target, const char* buffer, ssize_t bufsize, int pos) {
@@ -339,7 +339,7 @@ int handleoutput(int fd) {
 int runprogram(int argc, char* argv[]) {
     struct winsize ttysize; // The size of our tty
 
-    // We need to interrupt a select with a SIGCHLD. In order to do so, we need a SIGCHLD handler
+    // We need to interrupt a ppoll with a SIGCHLD. In order to do so, we need a SIGCHLD handler
     signal(SIGCHLD, sigchld_handler);
 
     // Calling posix_openpt() creates a pathname for the corresponding pseudoterminal slave device.
@@ -393,7 +393,7 @@ int runprogram(int argc, char* argv[]) {
        close the fd immediately after, as it is no longer needed.
 
        It turns out that the Linux kernel considers a master ptty fd that has
-       no open slave fds to be unused, and causes "select" to return with "error on fd".
+       no open slave fds to be unused, and causes "ppoll" to return with "error on fd".
        The subsequent read would fail, causing us to go into an infinite loop.
        This is a bug in the kernel, as the fact that a master ptty fd has no slaves
        is not a permanent problem.
@@ -449,10 +449,11 @@ int runprogram(int argc, char* argv[]) {
     int status = 0;
     int terminate = 0;
     pid_t wait_id;
-    sigset_t sigmask, sigmask_select;
+    sigset_t sigmask, sigmask_ppoll;
+    struct pollfd pfd = {masterpt, POLLIN, 0};
 
-    // Set the signal mask during the select
-    sigemptyset(&sigmask_select);
+    // Set the signal mask during the ppoll
+    sigemptyset(&sigmask_ppoll);
 
     // And during the regular run
     sigemptyset(&sigmask);
@@ -462,14 +463,9 @@ int runprogram(int argc, char* argv[]) {
 
     do {
         if (!terminate) {
-            fd_set readfd;
+            int ret = ppoll(&pfd, 1, NULL, &sigmask_ppoll);
 
-            FD_ZERO(&readfd);
-            FD_SET(masterpt, &readfd);
-
-            int selret = pselect(masterpt + 1, &readfd, NULL, NULL, NULL, &sigmask_select);
-
-            if (selret > 0 && FD_ISSET(masterpt, &readfd)) {
+            if (ret > 0) {
                 int ret = handleoutput(masterpt);
                 if (ret != 0) { // FIXME, no < 0
                     // Authentication failed or any other error
