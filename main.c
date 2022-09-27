@@ -93,7 +93,7 @@ static int parse_options(int argc, char* argv[]) {
     args.pwsrc.fd = 0;
 
 #define VIRGIN_PWTYPE if (args.pwtype != PWT_STDIN) { \
-    fprintf(stderr, "Conflicting password source\n"); \
+    fprintf(stdout, "Conflicting password source\n"); \
     error = RETURN_CONFLICTING_ARGUMENTS; }
 
     while ((opt = getopt(argc, argv, "+f:d:p:P:heVv")) != -1 && error == -1) {
@@ -137,7 +137,7 @@ static int parse_options(int argc, char* argv[]) {
             args.pwtype = PWT_PASS;
             args.pwsrc.password = getenv("SSHPASS");
             if (args.pwsrc.password == NULL) {
-                fprintf(stderr,
+                fprintf(stdout,
                         "sshpass: -e option given but SSHPASS environment variable not set\n");
                 error = RETURN_INVALID_ARGUMENTS;
             }
@@ -256,10 +256,12 @@ int handleoutput(int fd) {
 
     // static const char target3[] = "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!";
     // Warns about man in the middle attack, The remote identification changed error is sent to
-    // stderr, not the tty, so we do not handle it.
+    // stdout, not the tty, so we do not handle it.
     // This is not a problem, as ssh exists immediately in such a case
     char buffer[256];
     int ret = 0;
+
+    args.verbose = 1;
 
     if (args.pwprompt) {
         target1 = args.pwprompt;
@@ -267,24 +269,29 @@ int handleoutput(int fd) {
 
     if (args.verbose && firsttime) {
         firsttime = 0;
-        fprintf(stderr, "SSHPASS searching for password prompt using match \"%s\"\n", target1);
+        fprintf(stdout, "SSHPASS searching for password prompt using match \"%s\"\n", target1);
+        fflush(stdout);
     }
 
     int numread = read(fd, buffer, sizeof(buffer) - 1);
     if (numread == 0) {
-        fprintf(stderr, "got EOF, exiting ...\n");
+        fprintf(stdout, "got EOF, exiting ...\n");
+        fflush(stdout);
         exit(0);
     } else if (numread < 0) {
-        fprintf(stderr, "got err: %s\n", strerror(errno));
+        fprintf(stdout, "got err: %s\n", strerror(errno));
+        fflush(stdout);
         exit(1);
     }
 
     buffer[numread] = '\0';
     rcv_bytes += numread;
     printf("<<<(%d): %s>>>\n", numread, buffer);
+    fflush(stdout);
 
     if (args.verbose) {
-        fprintf(stderr, "SSHPASS read: %s\n", buffer);
+        fprintf(stdout, "SSHPASS read: %s\n", buffer);
+        fflush(stdout);
     }
 
     // FIXME, XXX
@@ -295,15 +302,19 @@ int handleoutput(int fd) {
         // 此时不存在 The authenticity of host
         // 因为 The authenticity of host 比 password 先出现
         if (!password_sent) {
-            if (args.verbose)
-                fprintf(stderr, "SSHPASS detected prompt. Sending password.\n");
+            if (args.verbose) {
+                fprintf(stdout, "SSHPASS detected prompt. Sending password.\n");
+                fflush(stdout);
+            }
             write_pass(fd);
             target1_pos = 0;
             password_sent = 1;
         } else {
             // Wrong password - terminate with proper error code
-            if (args.verbose)
-                fprintf(stderr, "SSHPASS detected prompt, again. Wrong password. Terminating.\n");
+            if (args.verbose) {
+                fprintf(stdout, "SSHPASS detected prompt, again. Wrong password. Terminating.\n");
+                fflush(stdout);
+            }
             ret = RETURN_INCORRECT_PASSWORD;
         }
     }
@@ -314,8 +325,10 @@ int handleoutput(int fd) {
 
         // Are we being prompted to authenticate the host?
         if (target2[target2_pos] == '\0') {
-            if (args.verbose)
-                fprintf(stderr, "SSHPASS detected host authentication prompt. Exiting.\n");
+            if (args.verbose) {
+                fprintf(stdout, "SSHPASS detected host authentication prompt. Exiting.\n");
+                fflush(stdout);
+            }
             ret = RETURN_HOST_KEY_UNKNOWN;
         }
     }
@@ -411,6 +424,8 @@ int runprogram(int argc, char* argv[]) {
         // in the previous step, this step causes the pseudoterminal slave to become
         // the controlling terminal for the child.
         // This line makes the ptty our controlling tty. We do not otherwise need it open
+        printf("child: open slave_dev_name(%s)\n", slave_dev_name);
+        fflush(stdout);
         slavept = open(slave_dev_name, O_RDWR);
         close(slavept); // XXX?
 
@@ -427,6 +442,8 @@ int runprogram(int argc, char* argv[]) {
     }
 
     // We are the parent
+    printf("parent: open slave_dev_name(%s)\n", slave_dev_name);
+    fflush(stdout);
     slavept = open(slave_dev_name, O_RDWR|O_NOCTTY);
 
     int status = 0;
