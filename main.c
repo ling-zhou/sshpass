@@ -366,11 +366,13 @@ int runprogram(int argc, char* argv[]) {
     // file  descriptor  for  that  terminal.  This  is  useful  if  standard  input  and
     // output  are redirected, and a program wants to ensure that it is communicating with
     // the controlling terminal. For example, the getpass() function described in Section
-    // 8.5 opens/dev/tty for this purpose. If the process doesn’t have a controlling terminal,
+    // 8.5 opens /dev/tty for this purpose. If the process doesn’t have a controlling terminal,
     // opening /dev/tty fails with the error ENXIO.
 
     // As long as processes exist that have the slave end as their controlling TTYs,
-    // __new slave fds__ can be created by opening /dev/tty, which is exactly what ssh is doing.
+    // __new slave fds__ can be created by __opening /dev/tty__,
+    // which is exactly what __ssh is doing__.
+
     if (ioctl(0, TIOCGWINSZ, &ttysize) == 0) {
         printf("register SIGWINCH signal\n");
         signal(SIGWINCH, window_resize_handler);
@@ -391,8 +393,8 @@ int runprogram(int argc, char* argv[]) {
        This is a bug in the kernel, as the fact that a master ptty fd has no slaves
        is not a permanent problem.
 
-       As long as processes exist that have the slave end as their controlling TTYs, new
-       slave fds can be created by opening /dev/tty, which is exactly what ssh is doing.
+       ** As long as processes exist that have the slave end as their controlling TTYs, new **
+       ** slave fds can be created by opening /dev/tty, which is exactly what ssh is doing **.
 
        Our attempt at solving this problem was to have the child process not close
        its end of the slave ptty fd. We do leak this fd, but this was a small
