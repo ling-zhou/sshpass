@@ -424,8 +424,11 @@ int runprogram(int argc, char* argv[]) {
         // the controlling terminal for the child.
         // This line makes the ptty our controlling tty. We do not otherwise need it open
         printf("child: open slave_dev_name(%s)\n", slave_dev_name);
-        fflush(stdout);
+        printf("child: slavept: %d\n" ,slavept);
+        close(slavept);
         slavept = open(slave_dev_name, O_RDWR);
+        printf("child: slavept2: %d\n" ,slavept);
+        fflush(stdout);
         close(slavept); // XXX?
 
         // Close the file descriptor for the pseudoterminal master,
@@ -442,6 +445,7 @@ int runprogram(int argc, char* argv[]) {
 
     // We are the parent
     printf("parent: open slave_dev_name(%s)\n", slave_dev_name);
+    printf("parent: slavept: %d\n" ,slavept);
     fflush(stdout);
     slavept = open(slave_dev_name, O_RDWR|O_NOCTTY);
 
