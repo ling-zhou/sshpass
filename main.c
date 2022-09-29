@@ -277,6 +277,8 @@ int handleoutput(int fd) {
         fflush(stdout);
     }
 
+    // ** 事实证明, 子进程 ssh 的 stdout/stderr 没有重定向到 slavept,
+    // ** 而是直接打印到了终端(如 Weterm), 因为这里读不到
     int numread = read(fd, buffer, sizeof(buffer) - 1);
     if (numread == 0) {
         fprintf(stdout, "got EOF, exiting ...\n");
@@ -393,8 +395,8 @@ int runprogram(int argc, char* argv[]) {
        This is a bug in the kernel, as the fact that a master ptty fd has no slaves
        is not a permanent problem.
 
-       ** As long as processes exist that have the slave end as their controlling TTYs, new **
-       ** slave fds can be created by opening /dev/tty, which is exactly what ssh is doing **.
+       ** As long as processes exist that have the slave end as their controlling TTYs, new
+       ** slave fds can be created by opening /dev/tty, which is exactly what ssh is doing.
 
        Our attempt at solving this problem was to have the child process not close
        its end of the slave ptty fd. We do leak this fd, but this was a small
