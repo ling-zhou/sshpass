@@ -41,6 +41,8 @@
 #include <errno.h>
 #include <string.h>
 
+#include <pty.h>
+
 enum program_return_codes {
     RETURN_NOERROR,
     RETURN_INVALID_ARGUMENTS,
@@ -65,7 +67,6 @@ struct {
 } args;
 
 /* use global variables so that this information can be shared with the signal handler */
-static int ourtty; // Our own tty(local controlling tty under which the program is run?)
 static int masterpt;
 
 static void show_help() {
@@ -172,8 +173,11 @@ static int parse_options(int argc, char* argv[]) {
 void window_resize_handler(int signum) {
     struct winsize ttysize; // The size of our tty
 
-    if (ioctl(ourtty, TIOCGWINSZ, &ttysize) == 0)
+    printf("in window_resize_handler\n");
+    if (ioctl(0, TIOCGWINSZ, &ttysize) == 0)
         ioctl(masterpt, TIOCSWINSZ, &ttysize);
+    else
+        printf("in window_resize_handler\n");
 }
 
 // Do nothing handler - makes sure the ppoll will terminate if the signal arrives, though.
@@ -342,29 +346,21 @@ int runprogram(int argc, char* argv[]) {
     // We need to interrupt a ppoll with a SIGCHLD. In order to do so, we need a SIGCHLD handler
     signal(SIGCHLD, sigchld_handler);
 
+    char slave_dev_name[128];
+    int slavept;
+
+    int rc = openpty(&masterpt, &slavept, slave_dev_name, NULL, NULL);
+    if (rc < 0) {
+        perror("openpty");
+        return RETURN_RUNTIME_ERROR;
+    }
+
     // Calling posix_openpt() creates a pathname for the corresponding pseudoterminal slave device.
     // The pathname of the __slave device__ can be obtained using ptsname(3).
     // The slave device pathname exists only as long as the master device is open.
     //
     // Create a pseudo terminal for our process
     //   An unused UNIX 98 pseudoterminal master is opened by calling posix_openpt(3).
-    masterpt = posix_openpt(O_RDWR);
-    if (masterpt == -1) {
-        perror("Failed to get a pseudo terminal");
-        return RETURN_RUNTIME_ERROR;
-    }
-
-    fcntl(masterpt, F_SETFL, O_NONBLOCK);
-
-    if (grantpt(masterpt) != 0) {
-        perror("Failed to change pseudo terminal's permission");
-        return RETURN_RUNTIME_ERROR;
-    }
-
-    if (unlockpt(masterpt) != 0) {
-        perror("Failed to unlock pseudo terminal");
-        return RETURN_RUNTIME_ERROR;
-    }
 
     // If a process has a __controlling terminal__, opening the special file __/dev/tty__ obtains a
     // file  descriptor  for  that  terminal.  This  is  useful  if  standard  input  and
@@ -375,15 +371,12 @@ int runprogram(int argc, char* argv[]) {
 
     // As long as processes exist that have the slave end as their controlling TTYs,
     // __new slave fds__ can be created by opening /dev/tty, which is exactly what ssh is doing.
-    ourtty = open("/dev/tty", 0); // XXX, local terminal(e.g. WeTerm)?
-    if (ourtty != -1 && ioctl(ourtty, TIOCGWINSZ, &ttysize) == 0) {
+    if (ioctl(0, TIOCGWINSZ, &ttysize) == 0) {
+        printf("register SIGWINCH signal\n");
         signal(SIGWINCH, window_resize_handler);
         ioctl(masterpt, TIOCSWINSZ, &ttysize);
     }
 
-    // The pathname of the slave device can be obtained using ptsname(3).
-    const char* slave_dev_name = ptsname(masterpt);
-    int slavept;
     /*
        This comment documents the history of code.
 
