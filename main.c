@@ -68,6 +68,7 @@ struct {
 
 /* use global variables so that this information can be shared with the signal handler */
 static int masterpt;
+static int slavept;
 
 static void show_help() {
     printf("Usage: " PACKAGE_NAME " [-f|-d|-p|-e] [-hV] command parameters\n"
@@ -173,11 +174,12 @@ static int parse_options(int argc, char* argv[]) {
 void window_resize_handler(int signum) {
     struct winsize ttysize; // The size of our tty
 
-    printf("in window_resize_handler\n");
+    printf("pid: %d, in window_resize_handler\n", getpid());
+    fflush(stdout);
     if (ioctl(0, TIOCGWINSZ, &ttysize) == 0)
-        ioctl(masterpt, TIOCSWINSZ, &ttysize);
+        ioctl(slavept, TIOCSWINSZ, &ttysize);
     else
-        printf("in window_resize_handler\n");
+        printf("pid: %d, failed to ioctl: %m\n", getpid());
 }
 
 // Do nothing handler - makes sure the ppoll will terminate if the signal arrives, though.
@@ -349,7 +351,6 @@ int runprogram(int argc, char* argv[]) {
     signal(SIGCHLD, sigchld_handler);
 
     char slave_dev_name[128];
-    int slavept;
 
     int rc = openpty(&masterpt, &slavept, slave_dev_name, NULL, NULL);
     if (rc < 0) {
@@ -376,9 +377,10 @@ int runprogram(int argc, char* argv[]) {
     // which is exactly what __ssh is doing__.
 
     if (ioctl(0, TIOCGWINSZ, &ttysize) == 0) {
-        printf("register SIGWINCH signal\n");
+        printf("pid: %d, register SIGWINCH signal\n", getpid());
+        fflush(stdout);
         signal(SIGWINCH, window_resize_handler);
-        ioctl(masterpt, TIOCSWINSZ, &ttysize);
+        ioctl(slavept, TIOCSWINSZ, &ttysize);
     }
 
     /*
