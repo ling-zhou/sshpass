@@ -265,7 +265,6 @@ int handleoutput(int fd) {
     // stdout, not the tty, so we do not handle it.
     // This is not a problem, as ssh exists immediately in such a case
     char buffer[256];
-    int ret = 0;
 
     args.verbose = 1;
 
@@ -323,25 +322,22 @@ int handleoutput(int fd) {
                 fprintf(stdout, "SSHPASS detected prompt, again. Wrong password. Terminating.\n");
                 fflush(stdout);
             }
-            ret = RETURN_INCORRECT_PASSWORD;
+            return RETURN_INCORRECT_PASSWORD;
         }
     }
 
-    if (ret == 0) {
-        // XXX
-        target2_pos = match(target2, buffer, numread, target2_pos);
+    target2_pos = match(target2, buffer, numread, target2_pos);
 
-        // Are we being prompted to authenticate the host?
-        if (target2[target2_pos] == '\0') {
-            if (args.verbose) {
-                fprintf(stdout, "SSHPASS detected host authentication prompt. Exiting.\n");
-                fflush(stdout);
-            }
-            ret = RETURN_HOST_KEY_UNKNOWN;
+    // Are we being prompted to authenticate the host?
+    if (target2[target2_pos] == '\0') {
+        if (args.verbose) {
+            fprintf(stdout, "SSHPASS detected host authentication prompt. Exiting.\n");
+            fflush(stdout);
         }
+        return RETURN_HOST_KEY_UNKNOWN;
     }
 
-    return ret;
+    return 0;
 }
 
 int runprogram(int argc, char* argv[]) {
@@ -450,7 +446,7 @@ int runprogram(int argc, char* argv[]) {
     slavept = open(slave_dev_name, O_RDWR|O_NOCTTY);
 
     int status = 0;
-    int terminate = 0;
+    int errcode = 0;
     pid_t wait_id;
     sigset_t sigmask, sigmask_ppoll;
     struct pollfd pfd = {masterpt, POLLIN, 0};
@@ -465,37 +461,17 @@ int runprogram(int argc, char* argv[]) {
     sigprocmask(SIG_SETMASK, &sigmask, NULL);
 
     do {
-        if (!terminate) {
-            int ret = ppoll(&pfd, 1, NULL, &sigmask_ppoll);
-
-            if (ret > 0) {
-                int ret = handleoutput(masterpt);
-                if (ret != 0) { // FIXME, no < 0
-                    // Authentication failed or any other error
-
-                    // handleoutput returns positive error number in case of some error, and
-                    // a negative value if all that happened is that the slave end of the pt
-                    // is closed.
-                    if (ret > 0) {
-                        close(masterpt); // Signal ssh that it's controlling TTY is now closed
-                        close(slavept);
-                    }
-
-                    terminate = ret;
-                    if (terminate) {
-                        close(slavept);
-                    }
-                }
-            }
-
-            wait_id = waitpid(childpid, &status, WNOHANG);
-        } else {
-            wait_id = waitpid(childpid, &status, 0);
+        int ret = ppoll(&pfd, 1, NULL, &sigmask_ppoll);
+        if (ret > 0 && (errcode = handleoutput(masterpt)) != 0) {
+            close(masterpt); // Signal ssh that it's controlling TTY is now closed
+            close(slavept);
         }
-    } while (wait_id == 0 || (!WIFEXITED(status) && !WIFSIGNALED(status)));
 
-    if (terminate > 0)
-        return terminate;
+        wait_id = waitpid(childpid, &status, (errcode == 0) ? WNOHANG : 0);
+    } while (errcode == 0 && wait_id == 0);
+
+    if (errcode != 0)
+        return errcode;
     else if (WIFEXITED(status))
         return WEXITSTATUS(status);
     else
