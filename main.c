@@ -341,6 +341,7 @@ int handleoutput(int fd) {
 int runprogram(int argc, char* argv[]) {
     // We need to interrupt a ppoll with a SIGCHLD. In order to do so, we need a SIGCHLD handler
     signal(SIGCHLD, sigchld_handler);
+    signal(SIGWINCH, window_resize_handler);
 
     char slave_dev_name[128];
 
@@ -367,8 +368,6 @@ int runprogram(int argc, char* argv[]) {
     // As long as processes exist that have the slave end as their controlling TTYs,
     // __new slave fds__ can be created by __opening /dev/tty__,
     // which is exactly what __ssh is doing__.
-
-    signal(SIGWINCH, window_resize_handler);
 
     /*
        This comment documents the history of code.
@@ -406,21 +405,20 @@ int runprogram(int argc, char* argv[]) {
         // controlling terminal (if it had one).
         setsid(); // Detach us from the current TTY
 
+        // Close the file descriptor for the pseudoterminal master,
+        // since it is not required in the child.
+        close(masterpt);
+        close(slavept);
+
         // Open the pseudoterminal slave. Since the child lost its controlling terminal
         // in the previous step, this step causes the pseudoterminal slave to become
         // the controlling terminal for the child.
         // This line makes the ptty our controlling tty. We do not otherwise need it open
         printf("child: open slave_dev_name(%s)\n", slave_dev_name);
-        printf("child: slavept: %d\n" ,slavept);
-        close(slavept);
-        slavept = open(slave_dev_name, O_RDWR);
-        printf("child: slavept2: %d\n" ,slavept);
         fflush(stdout);
-        close(slavept); // XXX?
 
-        // Close the file descriptor for the pseudoterminal master,
-        // since it is not required in the child.
-        close(masterpt);
+        slavept = open(slave_dev_name, O_RDWR);
+        close(slavept); // why?
 
         execvp(argv[0], argv);
         perror("system BUG: sshpass: Failed to run command");
