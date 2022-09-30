@@ -467,7 +467,9 @@ int runprogram(int argc, char* argv[]) {
             close(slavept);
         }
 
-        wait_id = waitpid(childpid, &status, (errcode == 0) ? WNOHANG : 0);
+        while ((wait_id = waitpid(childpid, &status, (errcode == 0) ? WNOHANG : 0)) < 0 &&
+                errno == EINTR)
+            ;
     } while (errcode == 0 && wait_id == 0);
 
     if (errcode != 0)
