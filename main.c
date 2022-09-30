@@ -174,8 +174,6 @@ static int parse_options(int argc, char* argv[]) {
 void window_resize_handler(int signum) {
     struct winsize ttysize; // The size of our tty
 
-    printf("pid: %d, in window_resize_handler\n", getpid());
-    fflush(stdout);
     if (ioctl(0, TIOCGWINSZ, &ttysize) == 0)
         ioctl(slavept, TIOCSWINSZ, &ttysize);
     else
@@ -341,8 +339,6 @@ int handleoutput(int fd) {
 }
 
 int runprogram(int argc, char* argv[]) {
-    struct winsize ttysize; // The size of our tty
-
     // We need to interrupt a ppoll with a SIGCHLD. In order to do so, we need a SIGCHLD handler
     signal(SIGCHLD, sigchld_handler);
 
@@ -372,12 +368,7 @@ int runprogram(int argc, char* argv[]) {
     // __new slave fds__ can be created by __opening /dev/tty__,
     // which is exactly what __ssh is doing__.
 
-    if (ioctl(0, TIOCGWINSZ, &ttysize) == 0) {
-        printf("pid: %d, register SIGWINCH signal\n", getpid());
-        fflush(stdout);
-        signal(SIGWINCH, window_resize_handler);
-        ioctl(slavept, TIOCSWINSZ, &ttysize);
-    }
+    signal(SIGWINCH, window_resize_handler);
 
     /*
        This comment documents the history of code.
