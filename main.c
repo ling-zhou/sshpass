@@ -432,7 +432,7 @@ int runprogram(int argc, char* argv[]) {
     printf("parent: open slave_dev_name(%s)\n", slave_dev_name);
     printf("parent: slavept: %d\n" ,slavept);
     fflush(stdout);
-    slavept = open(slave_dev_name, O_RDWR|O_NOCTTY);
+    //slavept = open(slave_dev_name, O_RDWR|O_NOCTTY);
 
     int status = 0;
     int errcode = 0;
