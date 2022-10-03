@@ -237,7 +237,7 @@ void write_pass(int fd) {
         break;
     case PWT_PASS:
         write(fd, args.pwsrc.password, strlen(args.pwsrc.password));
-        write(fd, "\n", 1);
+        write(fd, "\n", 1); // "\r" alse ok
         break;
     }
 }
@@ -261,7 +261,7 @@ int handleoutput(int fd) {
     // static const char target3[] = "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!";
     // Warns about man in the middle attack, The remote identification changed error is sent to
     // stdout, not the tty, so we do not handle it.
-    // This is not a problem, as ssh exists immediately in such a case
+    // This is not a problem, as ssh exits immediately in such a case
     char buffer[256];
 
     args.verbose = 1;
