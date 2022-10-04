@@ -264,7 +264,7 @@ int handleoutput(int fd) {
     // This is not a problem, as ssh exits immediately in such a case
     char buffer[256];
 
-    args.verbose = 1;
+    // args.verbose = 1;
 
     if (args.pwprompt) {
         target1 = args.pwprompt;
@@ -291,15 +291,12 @@ int handleoutput(int fd) {
 
     buffer[numread] = '\0';
     rcv_bytes += numread;
-    printf("<<<(%d): %s>>>\n", numread, buffer);
-    fflush(stdout);
 
     if (args.verbose) {
         fprintf(stdout, "SSHPASS read: %s\n", buffer);
         fflush(stdout);
     }
 
-    // FIXME, XXX
     target1_pos = match(target1, buffer, numread, target1_pos);
 
     // Are we at a password prompt?
@@ -414,9 +411,6 @@ int runprogram(int argc, char* argv[]) {
         // in the previous step, this step causes the pseudoterminal slave to become
         // the controlling terminal for the child.
         // This line makes the ptty our controlling tty. We do not otherwise need it open
-        printf("child: open slave_dev_name(%s)\n", slave_dev_name);
-        fflush(stdout);
-
         slavept = open(slave_dev_name, O_RDWR);
         close(slavept); // why?
 
@@ -429,10 +423,6 @@ int runprogram(int argc, char* argv[]) {
     }
 
     // We are the parent
-    printf("parent: open slave_dev_name(%s)\n", slave_dev_name);
-    printf("parent: slavept: %d\n" ,slavept);
-    fflush(stdout);
-    //slavept = open(slave_dev_name, O_RDWR|O_NOCTTY);
 
     int status = 0;
     int errcode = 0;
