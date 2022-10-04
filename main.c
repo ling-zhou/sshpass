@@ -243,7 +243,6 @@ void write_pass(int fd) {
 }
 
 int handleoutput(int fd) {
-    static uint64_t rcv_bytes = 0;
     // We are looking for the string
     static int password_sent = 0; // If the "password" prompt repeated, we have the wrong password.
     static int target1_pos = 0, target2_pos = 0;
@@ -264,8 +263,6 @@ int handleoutput(int fd) {
     // This is not a problem, as ssh exits immediately in such a case
     char buffer[256];
 
-    // args.verbose = 1;
-
     if (args.pwprompt) {
         target1 = args.pwprompt;
     }
@@ -280,17 +277,14 @@ int handleoutput(int fd) {
     // ** 而是直接打印到了终端(如 Weterm), 因为这里读不到
     int numread = read(fd, buffer, sizeof(buffer) - 1);
     if (numread == 0) {
-        fprintf(stdout, "got EOF, exiting ...\n");
-        fflush(stdout);
+        fprintf(stderr, "got EOF, exiting ...\n");
         exit(0);
     } else if (numread < 0) {
-        fprintf(stdout, "got err: %s\n", strerror(errno));
-        fflush(stdout);
+        fprintf(stderr, "got err: %s\n", strerror(errno));
         exit(1);
     }
 
     buffer[numread] = '\0';
-    rcv_bytes += numread;
 
     if (args.verbose) {
         fprintf(stdout, "SSHPASS read: %s\n", buffer);
@@ -321,14 +315,15 @@ int handleoutput(int fd) {
         }
     }
 
+    if (password_sent)
+        return 0;
+
     target2_pos = match(target2, buffer, numread, target2_pos);
 
     // Are we being prompted to authenticate the host?
     if (target2[target2_pos] == '\0') {
-        if (args.verbose) {
-            fprintf(stdout, "SSHPASS detected host authentication prompt. Exiting.\n");
-            fflush(stdout);
-        }
+        fprintf(stdout, "SSHPASS detected host authentication prompt. Exiting.\n");
+        fflush(stdout);
         return RETURN_HOST_KEY_UNKNOWN;
     }
 
